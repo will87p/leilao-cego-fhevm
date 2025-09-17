@@ -28,9 +28,9 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "fhevm": "^0.4.0",
-    "fhevm-core-contracts": "^0.4.0",
+    "@fhevm/solidity": "^0.7.0",
     "@openzeppelin/contracts": "^5.0.0",
-    "dotenv": "^16.0.0"
+    "dotenv": "^16.0.0",
+    "fhevmjs": "^0.7.0"
   }
 }

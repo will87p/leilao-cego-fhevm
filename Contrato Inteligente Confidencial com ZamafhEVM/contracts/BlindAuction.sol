@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "fhevm/lib/TFHE.sol";
-import "fhevm/gateway/GatewayCaller.sol";
+import { FHE } from "@fhevm/solidity";
+import { SepoliaConfig } from "@fhevm/solidity/config/ZamaConfig.sol";
 
 /**
  * @title BlindAuction
  * @dev Contrato de leilão cego confidencial usando Zama FHEVM
  * @notice Este contrato permite lances confidenciais onde apenas o vencedor é revelado ao final
  */
-contract BlindAuction is GatewayCaller {
-    using TFHE for euint64;
-    using TFHE for ebool;
+contract BlindAuction {
+    using FHE for euint64;
+    using FHE for ebool;
 
     // Estrutura para armazenar informações do lance
     struct Bid {
@@ -71,6 +71,9 @@ contract BlindAuction is GatewayCaller {
         string memory _itemDescription,
         uint256 _biddingTime
     ) {
+        // Configurar FHEVM
+        FHE.setCoprocessor(SepoliaConfig.getSepoliaConfig());
+        
         auctioneer = msg.sender;
         itemDescription = _itemDescription;
         auctionEndTime = block.timestamp + _biddingTime;
@@ -78,7 +81,7 @@ contract BlindAuction is GatewayCaller {
         winnerRevealed = false;
         
         // Inicializar o lance mais alto com zero
-        highestBid = TFHE.asEuint64(0);
+        highestBid = FHE.asEuint64(0);
         currentWinner = address(0);
     }
 
@@ -88,20 +91,20 @@ contract BlindAuction is GatewayCaller {
      */
     function placeBid(inEuint64 calldata encryptedBid) external auctionActive {
         // Converter o lance de entrada para euint64
-        euint64 bidAmount = TFHE.asEuint64(encryptedBid);
+        euint64 bidAmount = FHE.asEuint64(encryptedBid);
         
         // Verificar se o lance é maior que zero
-        ebool isValidBid = TFHE.gt(bidAmount, TFHE.asEuint64(0));
-        require(TFHE.decrypt(isValidBid), "Lance deve ser maior que zero");
+        ebool isValidBid = FHE.gt(bidAmount, FHE.asEuint64(0));
+        require(FHE.decrypt(isValidBid), "Lance deve ser maior que zero");
         
         // Se é o primeiro lance ou se o lance é maior que o atual mais alto
-        ebool isHigherBid = TFHE.gt(bidAmount, highestBid);
+        ebool isHigherBid = FHE.gt(bidAmount, highestBid);
         
         // Atualizar o lance mais alto se necessário
-        highestBid = TFHE.select(isHigherBid, bidAmount, highestBid);
+        highestBid = FHE.select(isHigherBid, bidAmount, highestBid);
         
         // Atualizar o vencedor atual se necessário
-        if (TFHE.decrypt(isHigherBid)) {
+        if (FHE.decrypt(isHigherBid)) {
             currentWinner = msg.sender;
         }
         
@@ -117,7 +120,7 @@ contract BlindAuction is GatewayCaller {
         });
         
         // Permitir que o contrato acesse o lance criptografado
-        TFHE.allowThis(bidAmount);
+        FHE.allowThis(bidAmount);
         
         emit BidPlaced(msg.sender, keccak256(abi.encodePacked(msg.sender, block.timestamp)));
     }
@@ -145,27 +148,33 @@ contract BlindAuction is GatewayCaller {
         require(currentWinner != address(0), "Nenhum lance valido foi feito");
         
         // Solicitar descriptografia do lance vencedor
-        uint256[] memory cts = new uint256[](1);
-        cts[0] = Gateway.toUint256(highestBid);
+        bytes32[] memory cts = new bytes32[](1);
+        cts[0] = FHE.toBytes32(highestBid);
         
-        Gateway.requestDecryption(
+        FHE.requestDecryption(
             cts,
-            this.callbackRevealWinner.selector,
-            0,
-            block.timestamp + 100,
-            false
+            this.callbackRevealWinner.selector
         );
     }
 
     /**
      * @dev Callback para processar o resultado da descriptografia
-     * @param decryptedValue Valor descriptografado do lance vencedor
+     * @param requestId ID da solicitação de descriptografia
+     * @param cleartexts Valores descriptografados
+     * @param decryptionProof Prova de descriptografia
      */
     function callbackRevealWinner(
-        uint256 /*requestId*/,
-        uint256 decryptedValue
-    ) external onlyGateway {
+        uint256 requestId,
+        bytes memory cleartexts,
+        bytes memory decryptionProof
+    ) external {
         require(!winnerRevealed, "Vencedor ja foi revelado");
+        
+        // Verificar assinaturas
+        FHE.checkSignatures(requestId, cleartexts, decryptionProof);
+        
+        // Decodificar o valor descriptografado
+        (uint64 decryptedValue) = abi.decode(cleartexts, (uint64));
         
         winner = currentWinner;
         winningBid = decryptedValue;

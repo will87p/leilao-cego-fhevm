@@ -22,7 +22,16 @@ module.exports = {
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 11155111,
     },
-    // Configuração para rede FHEVM de teste
+    // Rede Zama Devnet (FHEVM v0.7.0)
+    zama: {
+      url: process.env.ZAMA_RPC_URL || "https://devnet.zama.ai",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 8009,
+      timeout: 120000, // 2 minutos
+      gas: "auto",
+      gasPrice: "auto",
+    },
+    // Configuração legacy para compatibilidade
     fhevm: {
       url: process.env.FHEVM_RPC_URL || "https://devnet.zama.ai",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
